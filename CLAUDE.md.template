@@ -1,0 +1,44 @@
+# {Project Name} — Development Rules
+
+## General
+
+- Be concise. Don't explain what you're about to do — just do it.
+- Don't add features, refactor code, or make improvements beyond what was asked.
+- Don't add comments, docstrings, or type annotations to code you didn't change.
+- Don't create helpers or abstractions for one-time operations.
+- Don't design for hypothetical future requirements.
+- Three similar lines of code is better than a premature abstraction.
+
+## Code Changes
+
+- Read code before modifying it. Understand what exists before suggesting changes.
+- Prefer editing existing files over creating new ones.
+- Don't add error handling for scenarios that can't happen.
+- Don't add backwards-compatibility shims — just change the code.
+- Only validate at system boundaries (user input, external APIs). Trust internal code.
+
+## Git
+
+- Use `/commit-push` for all commits.
+- Don't commit unless explicitly asked.
+- Don't push unless explicitly asked.
+- Never use `git add -A` or `git add .` — stage specific files.
+- Never commit secrets, credentials, or binaries.
+
+## Testing
+
+- Write table-driven tests with `t.Run` for subtests.
+- Use `t.Helper()` in test helpers.
+- Test names: `TestFunctionName`, `TestType_Method`, or `TestFunctionName_condition`.
+- Run tests before considering work done.
+
+## Go
+
+- Run `/go` before submitting Go changes for review.
+- Follow Effective Go, Practical Go, and standard library conventions.
+- `cmd/` for binaries, `internal/` for private packages.
+- Standard library imports first, blank line, then third-party, then internal.
+
+## {Project-Specific Section}
+
+{Add project-specific rules, domain context, and workflow instructions here.}
