@@ -4,6 +4,10 @@ Shared engineering and Claude Code standards. Other repos reference these skills
 
 ## Skills
 
+### api-audit
+
+API audit across three dimensions: API design (against Google API Design Guide and Microsoft REST API Guidelines), end-to-end test readiness, and agentic workflow support. Language and framework agnostic — discovers the API surface from routes, handlers, OpenAPI specs, protos, or GraphQL schemas. Produces a PASS/WARN/FAIL report with file paths and line numbers.
+
 ### commit-push
 
 Commit and push workflow. Stages changes, writes a structured commit message (summary + bulleted changes), and pushes to the current branch. Runs on `claude-haiku-4-5` for speed.
