@@ -1,142 +1,108 @@
 ---
 name: api-audit
-description: Audit application and service APIs for design quality, end-to-end test readiness, and agentic workflow support.
-allowed-tools: Read, Glob, Grep, Bash
+description: Audit application and service APIs for conformance to Google AIPs (API Improvement Proposals). Findings cite specific AIP rules with quoted text.
+allowed-tools: Read, Glob, Grep, Bash, WebFetch
 ---
 
-Audit the API surface of this project. Discover endpoints by reading route registrations, handler files, OpenAPI/Swagger specs, proto definitions, GraphQL schemas, or any other API definition mechanism present in the codebase. Adapt your approach to whatever language and framework the project uses.
+Audit the API surface of this project for conformance to the Google AIPs at google.aip.dev. Every finding must be grounded in text fetched from the AIP at audit time — never in the model's recollection of API design principles.
 
-Produce a report with three sections. For each section, list specific findings with file paths and line numbers. Categorize each finding as one of:
+## Step 1: Fetch the AIPs
 
-- **PASS** — meets the standard
-- **WARN** — deviation that may be intentional but should be reviewed
-- **FAIL** — violates the standard and should be fixed
+Fetch all core AIPs in parallel (one assistant turn, multiple WebFetch calls) before reading any project code.
 
-At the end, provide a summary count of PASS/WARN/FAIL per section.
+Core AIPs — always in scope:
 
----
+- https://google.aip.dev/121 — Resource-oriented design
+- https://google.aip.dev/122 — Resource names
+- https://google.aip.dev/130 — Standard methods
+- https://google.aip.dev/131 — Standard methods: Get
+- https://google.aip.dev/132 — Standard methods: List
+- https://google.aip.dev/133 — Standard methods: Create
+- https://google.aip.dev/134 — Standard methods: Update
+- https://google.aip.dev/135 — Standard methods: Delete
+- https://google.aip.dev/136 — Custom methods
+- https://google.aip.dev/140 — Field names
+- https://google.aip.dev/158 — Pagination
+- https://google.aip.dev/160 — Filtering
+- https://google.aip.dev/185 — API versioning
+- https://google.aip.dev/190 — Naming conventions
+- https://google.aip.dev/193 — Errors
+- https://google.aip.dev/211 — Authorization checks
 
-## 1. API Design
+When fetching each AIP, ask WebFetch for the full MUST / SHOULD / MAY rules and any examples, not a summary. You will quote from this text in findings.
 
-Evaluate against the [Google API Design Guide](https://cloud.google.com/apis/design) and [Microsoft REST API Guidelines](https://github.com/microsoft/api-guidelines). Use Google as the primary authority for resource modeling and method semantics. Use Microsoft for operational patterns.
+Conditional AIPs — fetch only if the API uses the corresponding pattern (decide after Step 2):
 
-### Resource naming
-- Resources are nouns, collections are plural (`/publishers`, `/books`)
-- URLs use kebab-case or camelCase consistently — never mixed
-- IDs are URL-safe (lowercase, alphanumeric, hyphens)
-- No verbs in resource paths — actions use sub-resources or custom methods (`/books/123:archive`, not `/archiveBook`)
-- Nesting reflects ownership (`/publishers/123/books`), not arbitrary grouping
+- https://google.aip.dev/151 — Long-running operations (if any endpoint returns an Operation or handles async work)
+- https://google.aip.dev/157 — Partial responses (if any endpoint supports field selection)
+- https://google.aip.dev/161 — Field masks (if PATCH endpoints use field masks)
+- https://google.aip.dev/164 — Soft delete (if resources can be soft-deleted or restored)
+- https://google.aip.dev/194 — Automatic retry configuration (if the API publishes client retry guidance)
+- https://google.aip.dev/231, /233, /234, /235 — Batch methods (if any batchGet / batchCreate / batchUpdate / batchDelete)
 
-### Standard methods
-- GET for reads (no body, no side effects)
-- POST for creates
-- PUT for full replacement, PATCH for partial updates — not interchangeable
-- DELETE returns 204 regardless of prior existence
-- Collection GET returns an array, never a bare object
+## Step 2: Discover the API surface
 
-### Error handling
-- Consistent error envelope across all endpoints: `{ error: { code, message } }` at minimum
-- Use standard HTTP status codes correctly (400 for bad input, 401 for unauthenticated, 403 for unauthorized, 404 for not found, 409 for conflicts, 422 for validation, 429 for rate limiting, 500 for server errors)
-- Error messages are actionable — they tell the caller what went wrong and how to fix it
-- No stack traces or internal details leak in production error responses
-- Permission checks happen before existence checks (return 403, not 404, unless revealing existence is itself a leak)
+Find every endpoint the project exposes. Adapt to whatever the project uses:
 
-### Pagination
-- Collection endpoints support pagination via `page_size`/`page_token` (Google) or `top`/`skip` (Microsoft) — pick one pattern and use it everywhere
-- Response includes a `next_page_token` or equivalent when more results exist
-- Pagination parameters don't change between pages (same filters, same ordering)
+- OpenAPI / Swagger specs — common paths: `openapi.yaml`, `swagger.json`, `docs/api.yaml`, generated output under `build/` or `dist/`
+- Route registrations in code — Go: `chi`, `gin`, `echo`, `gorilla/mux`, `net/http`; Python: FastAPI routers, Flask blueprints, Django `urls.py`, `aiohttp` routes
+- Proto files (`*.proto`) if the API has a gRPC surface with HTTP transcoding
 
-### Versioning
-- API version is explicit (URL path prefix `/v1/` or query param `?api-version=`)
-- No breaking changes within a version
+For each endpoint, record: HTTP method, path, handler function location (file:line), and request/response shape if available from the spec or code.
 
-### Idempotency
-- PUT and DELETE are idempotent
-- POST endpoints that create resources support an idempotency key or return 409 on duplicate
+If you cannot enumerate the API surface with reasonable confidence, stop and report what you found. Do not audit a partial surface without saying so.
 
-### Concurrency control
-- Mutable resources return an `ETag` or `last-modified` header
-- Update and delete operations support `If-Match` / `If-Unmodified-Since` to prevent lost updates
-- Clients get a clear 412 Precondition Failed when a conflict occurs — not a silent overwrite
+## Step 3: Evaluate each endpoint against the AIPs
 
-### Content negotiation
-- Requests and responses use `Content-Type` and `Accept` headers correctly
-- JSON responses use camelCase field names consistently
-- Dates use ISO 8601 / RFC 3339
+For every endpoint, check it against every core AIP rule that applies to its method and shape. Use the fetched AIP text as the authority — quote from it, don't paraphrase.
 
----
+Severity mapping (RFC 2119 terms used in AIPs):
 
-## 2. E2E Test Readiness
+- **MUST** violation → **FAIL**
+- **SHOULD** violation → **WARN**
+- **MAY** deviation → **PASS** unless clearly harmful
 
-Evaluate whether this API can be driven reliably in an automated end-to-end test harness.
+Produce one finding per (endpoint, violated rule) pair. Do not list PASS findings individually — roll them into the summary count.
 
-### Test data lifecycle
-- API supports creating test data through the same endpoints tests will exercise (no back-door DB seeding required)
-- Resources created during tests can be cleaned up via DELETE or a teardown mechanism
-- No global shared state that causes test interference — each test run can operate in isolation
+Every WARN or FAIL finding must include:
 
-### Deterministic behavior
-- Same input produces same output (no hidden randomness, no time-dependent logic without clock injection)
-- Ordering of collection responses is deterministic (explicit default sort, not database-order)
-- Async operations provide a way to poll or wait for completion
+- AIP reference: `AIP-NNN §<section-heading>`
+- Quoted rule text — one sentence of what the AIP requires, verbatim
+- Endpoint: `METHOD /path` with handler location `file:line`
+- What the endpoint does instead
+- Recommended fix, grounded in the AIP
 
-### Authentication in test environments
-- Auth can be configured for test environments (service accounts, test tokens, API keys)
-- No hard dependency on external identity providers that can't be stubbed in CI
+If you cannot quote the specific rule from the fetched AIP text, do not cite the AIP — omit the finding rather than invent authority.
 
-### Observability
-- Requests can be correlated via request IDs or trace headers
-- Errors return enough context to diagnose failures without reading server logs
+## Step 4: Output
 
-### Data isolation
-- Multi-tenant APIs support test tenant/namespace isolation
-- Tests can run concurrently without stepping on each other
+### Summary
 
-### Health and readiness
-- Service exposes a health or readiness endpoint that test harnesses can poll before sending traffic
-- Health endpoint reflects actual dependency status (database, caches, downstream services), not just "process is running"
+One row per AIP actually checked:
 
----
+| AIP | Title | Endpoints checked | PASS | WARN | FAIL |
+|-----|-------|-------------------|------|------|------|
+| 122 | Resource names | N | N | N | N |
+| 131 | Standard methods: Get | N | N | N | N |
+| ... | | | | | |
 
-## 3. Agentic Readiness
+### Findings
 
-Evaluate whether an AI agent can discover, use, compose, and recover from errors with this API.
+Grouped by AIP, FAIL before WARN within each group. Format:
 
-### Discoverability
-- API has machine-readable documentation (OpenAPI spec, proto files, GraphQL introspection)
-- Endpoint naming is self-descriptive — an agent can infer purpose from the URL and method
-- Response schemas are consistent and predictable across endpoints
+**AIP-122 §Resource ID segments — FAIL**
 
-### Error recovery
-- Error responses include enough detail for an agent to self-correct (e.g., "field X is required" not just "bad request")
-- Validation errors enumerate all failures, not just the first one
-- Rate limit responses include `Retry-After` or equivalent
+> "Resource IDs must not contain characters that require URL encoding."
 
-### Composability
-- CRUD operations exist for all core resources — an agent can create, read, update, and delete without special workflows
-- Related resources are linked (IDs or URLs) so an agent can navigate the object graph
-- Bulk operations exist for resources that agents will commonly need to process in batches
+Endpoint: `GET /users/{user_email}` — handler at `api/users.go:47`
+Uses email addresses (containing `@` and `.`) as the resource ID segment. Recommendation: use an opaque ID and expose email as a field on the User resource.
 
-### Idempotency and safety
-- An agent can safely retry failed requests without causing duplicates or corruption
-- GET requests have no side effects — an agent can explore freely
-- State-changing operations are explicit (POST/PUT/PATCH/DELETE, not GET with query params)
+### Top 3 priorities
 
-### Predictable schemas
-- Response fields are consistent — same field name means same type everywhere
-- Nullable fields are explicit, not sometimes-present sometimes-absent
-- Enums are documented and stable — an agent can rely on known values
+Three findings with the highest blast radius — rules that multiple endpoints violate, or violations that block programmatic or agentic consumers most severely.
 
----
+## Scope and caveats
 
-## Summary
-
-After completing the audit, output a table:
-
-| Section | PASS | WARN | FAIL |
-|---------|------|------|------|
-| API Design | | | |
-| E2E Test Readiness | | | |
-| Agentic Readiness | | | |
-
-Then list the top 3 highest-impact findings to address first.
+- This skill checks conformance to Google AIPs only. It does not audit observability, health/readiness endpoints, request-ID / tracing conventions, E2E test hooks, or agentic-workflow requirements. Those are out of scope.
+- AIPs are opinionated toward resource-oriented REST with a proto / gRPC flavor. Some idiomatic patterns in FastAPI, Flask, or stdlib `net/http` handlers will show up as FAIL against strict AIP rules. That is working as intended — report them, and let the service team decide whether to conform or document an exception.
+- Every citation must be backed by quoted AIP text fetched this run. If WebFetch fails for an AIP, note that AIP as "not checked" in the summary rather than falling back to recollection.
